@@ -1,0 +1,623 @@
+- DOCTOR: eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6ImM2MTc1YzA5LTc1MzgtNDU3NC1hZTQ2LWZjZmJhMTI5MzVlNSIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkRvY3RvciIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiJLaGFiaWIgTnVtYXJnb21lZG92IiwiZXhwIjoxNzU5MjA0NTYyLCJpc3MiOiJNeUFwcGxpY2F0aW9uSXNzdWVyIiwiYXVkIjoiTXlBcHBsaWNhdGlvbkF1ZGllbmNlIn0.yUXvojxt2k3P7t85_HtUXaEW92kXckcphDha7JQ3AiyjfHKYHxtj9hCkMl4nZTXZvOMc5XG52qy_a2U8eMUqPQ
+
+- DOCTOR ID: c6175c09-7538-4574-ae46-fcfba12935e5
+
+- RE: eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6ImQyNTBkYjMxLWIzZDktNDgwNy04MmM1LTQyOWI0MjFjZGE0NCIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IlJlY2VwdGlvbmlzdCIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiJUcuG6p24gVGjhu4sgQiIsImV4cCI6MTc1OTIwNDYzMCwiaXNzIjoiTXlBcHBsaWNhdGlvbklzc3VlciIsImF1ZCI6Ik15QXBwbGljYXRpb25BdWRpZW5jZSJ9.44cn0a1nqEAjkXTqru6o0Jo14PXqnej2AOhq3XEB1m4hE5y7yMr6u2s_FsPV4V-0Okqqhy7PdHJG62sBPwoV1g
+
+
+- RE ID: d250db31-b3d9-4807-82c5-429b421cda44
+
+
+
+    #region VALIDATE REQUIRED AND IS NUMBER
+    private void ValidateRequiredAndNumber(string? value, string fieldName, string requiredMsg, string numberMsg, Dictionary<string, string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            errors[fieldName] = requiredMsg;
+            return;
+        }
+
+        if (!int.TryParse(value, out _))
+            errors[fieldName] = numberMsg;
+    }
+    #endregion
+
+    #region VALIDATE QUANTITY
+    private void ValidateQuantity(string? quantity, Dictionary<string, string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(quantity))
+        {
+            errors["quantity"] = PrescriptionMessages.QUANTITY_IS_REQUIRED;
+            return;
+        }
+
+        if (!int.TryParse(quantity, out var parsedQuantity))
+        {
+            errors["quantity"] = PrescriptionMessages.QUANTITY_MUST_BE_A_NUMBER;
+        }
+        else if (parsedQuantity <= 0)
+        {
+            errors["quantity"] = PrescriptionMessages.QUANTITY_MUST_BE_POSITIVE;
+        }
+    }
+
+    #endregion
+
+
+    #region VALIDATE PRESCRIPTION DETAIL DATA
+    private Dictionary<string, string> ValidatePrescriptionDetailData(AddPrescriptionDetailDto dto)
+    {
+        var errors = new Dictionary<string, string>();
+
+        ValidateRequiredAndNumber(dto.PrescriptionDetailId.ToString(), "prescription_detail_id",
+            PrescriptionMessages.PRESCRIPTION_DETAIL_ID_IS_REQUIRED,
+            PrescriptionMessages.PRESCRIPTION_DETAIL_ID_MUST_BE_A_NUMBER, errors);
+
+        ValidateRequiredAndNumber(dto.PrescriptionId, "prescription_id",
+            PrescriptionMessages.PRESCRIPTION_ID_IS_REQUIRED,
+            PrescriptionMessages.PRESCRIPTION_ID_MUST_BE_A_NUMBER, errors);
+
+        ValidateRequiredAndNumber(dto.MedicineId, "medicine_id",
+            PrescriptionMessages.MEDICINE_ID_IS_REQUIRED,
+            PrescriptionMessages.MEDICINE_ID_MUST_BE_A_NUMBER, errors);
+
+        ValidateQuantity(dto.Quantity, errors);
+
+        if (string.IsNullOrWhiteSpace(dto.Usage))
+            errors["usage"] = PrescriptionMessages.USAGE_IS_REQUIRED;
+
+        return errors;
+    }
+    #endregion
+
+    #region VALIDATE USER + MRD 
+    private async Task<(ResponseService<T>? Response, (User user, MedicalRecordDetail medicalRecordDetail)? Result)> ValidateUserAndMrd<T>(Guid currentUserId, int medicalRecordDetailId)
+    {
+        var currentUser = await userRepo.GetUserWithRoleAsync(u => u.UserId == currentUserId);
+        if (currentUser == null)
+            return (new ResponseService<T>((int)HttpStatusCode.NotFound, UserMessages.CURRENT_USER_NOT_FOUND), null);
+
+        var medicalRecordDetail = await medicalRecordDetailRepo.GetMedicalRecordDetailWithAppointmentAsync(mrd => mrd.MedicalRecordDetailId == medicalRecordDetailId);
+        if (medicalRecordDetail is null)
+        {
+            return (new ResponseService<T>((int)HttpStatusCode.NotFound, MedicalRecordMessages.MEDICAL_RECORD_DETAIL_NOT_FOUND), null);
+        }
+
+        return (null, (currentUser, medicalRecordDetail));
+
+    }
+    #endregion
+
+
+    #region VALIDATE REQUIRED NUMBER MRD ID AND LIST PRESCRIPTION 
+    private Dictionary<string, string> ValidateRequiredNumberMrdIdAndLstPresData(AddPrescriptionDto dto)
+    {
+        var errors = new Dictionary<string, string>();
+
+        ValidateRequiredAndNumber(dto.MedicalRecordDetailId, "medical_record_detail_id",
+            MedicalRecordMessages.MEDICAL_RECORD_DETAIL_ID_IS_REQUIRED,
+            MedicalRecordMessages.MEDICAL_RECORD_DETAIL_MUST_BE_A_NUMBER, errors);
+
+        if (dto.PrescriptionDetails == null || dto.PrescriptionDetails.Count == 0)
+            errors["prescription_details"] = PrescriptionMessages.LIST_PRESCRIPTION_DETAILS_IS_REQUIRED;
+
+        return errors;
+    }
+
+    #endregion
+
+
+
+    #region GET DOCTOR APPOINTMENT STATISTIC
+    public async Task<object> GetDoctorAppointmentStatistic(Guid? currentUserId, string currentRoleName, string roleGuest, string roleDoctor, int? page, int? pageSize, DateTime? dateFrom, DateTime? dateTo, int completedStatus, int pendingStatus, int cancelledStatus, string groupType)
+    {
+        var query = _dbSet
+            .Include(a => a.Patient)
+            .Include(a => a.Doctor)
+            .Include(a => a.Status)
+            .Where(a => a.ScheduledDate >= dateFrom && a.ScheduledDate <= dateTo)
+            .AsQueryable();
+
+        if (currentRoleName == roleGuest)
+        {
+            query = query.Where(a => a.PatientId == currentUserId);
+        }
+        else if (currentRoleName == roleDoctor)
+        {
+            query = query.Where(a => a.DoctorId == currentUserId);
+        }
+
+        
+        var totalAppointments = await query.CountAsync();
+        var completed = await query.CountAsync(a => a.StatusId == completedStatus); // Đã khám xong
+        var pending = await query.CountAsync(a => a.StatusId == pendingStatus); // Đang chờ / Đang khám
+        var cancelled = await query.CountAsync(a => a.StatusId == cancelledStatus); // Đã huỷ
+
+
+
+        // Gom nhóm theo ngày/tuần/tháng
+        var rawGroup = await query
+            .GroupBy(a => a.ScheduledDate.Date)
+            .Select(g => new
+            {
+                Date = g.Key,
+                Count = g.Count()
+            })
+            .OrderBy(x => x.Date)
+            .ToListAsync();
+
+        var groupData = rawGroup
+            .Select(x => new
+            {
+                Label = x.Date.ToString("dd/MM"),
+                Count = x.Count
+            })
+            .ToList();
+        var result = new
+        {
+            summary = new
+            {
+                totalAppointments,
+                completed,
+                pending,
+                cancelled
+            },
+            chart = groupData
+        };
+
+        return result;
+    }
+    #endregion
+
+
+
+    // Kiểm tra và parse start_day
+        if (!hasStartDay)
+        {
+            startDay = DateTime.Today;
+        }
+        // Validate start day
+        else if (!DateTime.TryParseExact(dto.StartDay, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out startDay))
+        {
+            return new ResponseService<object>(
+                statusCode: (int)HttpStatusCode.BadRequest,
+                message: AppointmentMessages.START_DATE_IS_INVALID
+            );
+        }
+
+        // Kiểm tra và parse end_day
+        if (!hasEndDay)
+        {
+            endDay = DateTime.Today.AddDays(1).AddTicks(-1);
+        }
+        else if (!DateTime.TryParseExact(dto.EndDay, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out endDay))
+        {
+            return new ResponseService<object>(
+                statusCode: (int)HttpStatusCode.BadRequest,
+                message: AppointmentMessages.END_DATE_IS_INVALID
+            );
+        }
+        else
+        {
+            endDay = endDay.AddDays(1).AddTicks(-1);
+        }
+
+        // Check start_day phải bé hơn end_day
+        if (startDay > endDay)
+        {
+            return new ResponseService<object>(
+                statusCode: (int)HttpStatusCode.BadRequest,
+                message: AppointmentMessages.START_DATE_MUST_BE_LESS_THAN_END_DAY
+            );
+        }
+
+
+ case 2:
+                {
+
+                    var baseDate = today.AddDays((offset ?? 0) * 7);
+
+                    // Tính ngày bắt đầu tuần (giả sử tuần bắt đầu từ thứ Hai)
+                    var diffToMonday = (7 + (baseDate.DayOfWeek - DayOfWeek.Monday)) % 7;
+                    var startOfWeek = baseDate.AddDays(-diffToMonday).Date;
+                    var endOfWeek = startOfWeek.AddDays(7).Date;
+
+                    var groupedQueryWeek = await query
+                        .Where(x => x.ScheduledDate >= startOfWeek && x.ScheduledDate < endOfWeek)
+                        .GroupBy(x => x.ScheduledDate.Date)
+                        .Select(g => new
+                        {
+                            WeekLabel = $"{startOfWeek:dd/MM} - {endOfWeek.AddDays(-1):dd/MM}",
+                            Date = g.Key,
+                            Total = g.Count(),
+                            Completed = g.Count(x => x.StatusId == completedStatus),
+                            Pending = g.Count(x => x.StatusId == pendingStatus),
+                            Cancelled = g.Count(x => x.StatusId == cancelledStatus)
+                        })
+                        .ToListAsync();
+
+                    totalAppointments = groupedQueryWeek.Sum(x => x.Total);
+                    completed = groupedQueryWeek.Sum(x => x.Completed);
+                    pending = groupedQueryWeek.Sum(x => x.Pending);
+                    cancelled = groupedQueryWeek.Sum(x => x.Cancelled);
+
+                    var fullWeek = Enumerable.Range(0, 7)
+                        .Select(i => startOfWeek.AddDays(i))
+                        .Select(d => new
+                        {
+                            Date = d,
+                            Total = groupedQueryWeek.FirstOrDefault(x => x.Date == d)?.Total ?? 0
+                        })
+                        .ToList();
+
+                    groupData = groupedQueryWeek
+                        .Select(x => new
+                        {
+                            Label = x.WeekLabel,
+                            Count = x.Total
+                        })
+                        .Cast<object>()
+                        .ToList();
+                    break;
+                }
+
+
+
+◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘
+#endregion
+
+    #region GET DOCTOR APPOINTMENT STATISTIC
+    public async Task<object> GetDoctorAppointmentStatistic(Guid? currentUserId, string currentRoleName, string roleGuest, string roleDoctor, int? page, int? pageSize, int completedStatus, int pendingStatus, int cancelledStatus, int? groupType, int? offset = 0)
+    {
+        var query = _dbSet
+            .Include(a => a.Patient)
+            .Include(a => a.Doctor)
+            .Include(a => a.Status)
+            .AsQueryable();
+
+        if (currentRoleName == roleGuest)
+        {
+            query = query.Where(a => a.PatientId == currentUserId);
+        }
+        else if (currentRoleName == roleDoctor)
+        {
+            query = query.Where(a => a.DoctorId == currentUserId);
+        }
+
+        List<object> groupData = new();
+        int totalAppointments = 0, completed = 0, pending = 0, cancelled = 0;
+
+        var today = DateTime.UtcNow;
+
+        switch (groupType)
+        {
+            case 1:
+                {
+                    // Ngày được chọn = hôm nay + offset (mỗi offset = 1 ngày)
+                    var targetDate = today.AddDays(offset ?? 0);
+
+                    var groupedQueryDay = await query
+                        .Where(a => a.ScheduledDate.Date == targetDate.Date)
+                        .GroupBy(a => a.ScheduledDate.Date)
+                        .Select(g => new
+                        {
+                            Date = g.Key,
+                            Total = g.Count(),
+                            Completed = g.Count(x => x.StatusId == completedStatus),
+                            Pending = g.Count(x => x.StatusId == pendingStatus),
+                            Cancelled = g.Count(x => x.StatusId == cancelledStatus)
+                        })
+                        .OrderBy(x => x.Date)
+                        .ToListAsync();
+
+                    totalAppointments = groupedQueryDay.Sum(x => x.Total);
+                    completed = groupedQueryDay.Sum(x => x.Completed);
+                    pending = groupedQueryDay.Sum(x => x.Pending);
+                    cancelled = groupedQueryDay.Sum(x => x.Cancelled);
+
+                    groupData = groupedQueryDay
+                        .Select(x => new
+                        {
+                            Label = x.Date.ToString("dd/MM"),
+                            Count = x.Total
+                        })
+                        .Cast<object>()
+                        .ToList();
+                    break;
+                }
+
+            case 2:
+                {
+
+                    var baseDate = today.AddDays((offset ?? 0) * 7);
+
+                    // Tính ngày bắt đầu tuần (giả sử tuần bắt đầu từ thứ Hai)
+                    var diffToMonday = (7 + (baseDate.DayOfWeek - DayOfWeek.Monday)) % 7;
+                    var startOfWeek = baseDate.AddDays(-diffToMonday).Date;
+                    var endOfWeek = startOfWeek.AddDays(7).Date;
+
+                    var groupedQueryWeek = await query
+                        .Where(x => x.ScheduledDate >= startOfWeek && x.ScheduledDate < endOfWeek)
+                        .GroupBy(x => x.ScheduledDate.Date)
+                        .Select(g => new
+                        {
+                            WeekLabel = $"{startOfWeek:dd/MM} - {endOfWeek.AddDays(-1):dd/MM}",
+                            Date = g.Key,
+                            Total = g.Count(),
+                            Completed = g.Count(x => x.StatusId == completedStatus),
+                            Pending = g.Count(x => x.StatusId == pendingStatus),
+                            Cancelled = g.Count(x => x.StatusId == cancelledStatus)
+                        })
+                        .ToListAsync();
+
+                    totalAppointments = groupedQueryWeek.Sum(x => x.Total);
+                    completed = groupedQueryWeek.Sum(x => x.Completed);
+                    pending = groupedQueryWeek.Sum(x => x.Pending);
+                    cancelled = groupedQueryWeek.Sum(x => x.Cancelled);
+
+                    var fullWeek = Enumerable.Range(0, 7)
+                        .Select(i => startOfWeek.AddDays(i))
+                        .Select(d => new
+                        {
+                            Date = d,
+                            Total = groupedQueryWeek.FirstOrDefault(x => x.Date == d)?.Total ?? 0,
+                            Completed = groupedQueryWeek.FirstOrDefault(x => x.Date == d)?.Completed ?? 0,
+                            Pending = groupedQueryWeek.FirstOrDefault(x => x.Date == d)?.Pending ?? 0,
+                            Cancelled = groupedQueryWeek.FirstOrDefault(x => x.Date == d)?.Cancelled ?? 0
+                        })
+                        .ToList();
+
+                    var weekLabel = groupedQueryWeek.FirstOrDefault()?.WeekLabel ?? $"{startOfWeek:dd/MM} - {endOfWeek.AddDays(-1):dd/MM}";
+
+                    groupData = new List<object>
+                        {
+                            new
+                            {
+                                labels = fullWeek.Select(x => x.Date.ToString("dd/MM")).ToList(),
+                                datasets = new[]
+                                {
+                                    new
+                                    {
+                                        label = weekLabel,
+                                        data = fullWeek.Select(x => x.Total).ToList(),
+                                        borderWidth = 1
+                                    }
+                                },
+                                details = fullWeek.Select(x => new
+                                {
+                                    date = x.Date.ToString("dd/MM/yyyy"),
+                                    total = x.Total,
+                                    completed = x.Completed,
+                                    pending = x.Pending,
+                                    cancelled = x.Cancelled
+                                }).ToList()
+                            }
+                        };
+                    break;
+                }
+
+            case 3:
+                {
+                    // Xác định tháng cần lấy (theo offset)
+                    var targetMonth = today.AddMonths(offset ?? 0);
+                    var startOfMonth = new DateTime(targetMonth.Year, targetMonth.Month, 1);
+                    var endOfMonth = startOfMonth.AddMonths(1);
+
+                    // Query lấy toàn bộ lịch hẹn trong tháng đó
+                    var groupedQueryMonth = await query
+                        .Where(a => a.ScheduledDate >= startOfMonth && a.ScheduledDate < endOfMonth)
+                        .GroupBy(a => EF.Functions.DateDiffWeek(startOfMonth, a.ScheduledDate))
+                        .Select(g => new
+                        {
+                            WeekIndex = g.Key, // số tuần tính từ đầu tháng
+                            Total = g.Count(),
+                            Completed = g.Count(x => x.StatusId == completedStatus),
+                            Pending = g.Count(x => x.StatusId == pendingStatus),
+                            Cancelled = g.Count(x => x.StatusId == cancelledStatus)
+                        })
+                        .OrderBy(x => x.WeekIndex)
+                        .ToListAsync();
+
+                    // Tổng cộng chung
+                    totalAppointments = groupedQueryMonth.Sum(x => x.Total);
+                    completed = groupedQueryMonth.Sum(x => x.Completed);
+                    pending = groupedQueryMonth.Sum(x => x.Pending);
+                    cancelled = groupedQueryMonth.Sum(x => x.Cancelled);
+
+                    // Tính tổng số tuần trong tháng
+                    var daysInMonth = DateTime.DaysInMonth(targetMonth.Year, targetMonth.Month);
+                    var totalWeeks = (int)Math.Ceiling(daysInMonth / 7.0);
+
+                    // Tạo danh sách full các tuần (để lấp 0 cho tuần trống)
+                    var fullMonth = Enumerable.Range(0, totalWeeks)
+                        .Select(i => new
+                        {
+                            WeekLabel = $"Tuần {i + 1}",
+                            Total = groupedQueryMonth.FirstOrDefault(x => x.WeekIndex == i)?.Total ?? 0
+                        })
+                        .ToList();
+
+                    var monthLabel = $"{targetMonth:MM/yyyy}";
+
+                    groupData = new List<object>
+                    {
+                        new
+                        {
+                            labels = fullMonth.Select(x => x.WeekLabel).ToList(),
+                            datasets = new[]
+                            {
+                                new
+                                {
+                                    label = monthLabel,
+                                    data = fullMonth.Select(x => x.Total).ToList(),
+                                    borderWidth = 1
+                                }
+                            },
+
+                        }
+                    };
+                    break;
+                }
+
+            default:
+                goto case 2;
+        }
+
+        var result = new
+        {
+            summary = new
+            {
+                totalAppointments,
+                completed,
+                pending,
+                cancelled
+            },
+            chart = groupData
+        };
+
+        return result;
+    }
+
+    #endregion
+    ◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘
+SELECT * FROM appointment_status_history WHERE appointment_id = 184
+SELECT * FROM appointment_status_history WHERE status_id = 4
+
+
+SELECT status_id FROM appointment_status_history
+GROUP BY status_id;
+
+SELECT *
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY status_id ORDER BY created_at DESC) AS rn
+    FROM appointment_status_history
+    WHERE appointment_id = 180
+) t
+WHERE rn = 1;
+SELECT OBJECTPROPERTY(OBJECT_ID('appointment_status_history'), 'IsView') AS IsView;
+
+
+
+◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘
+SELECT 
+    status_id,
+    MIN(history_id) AS history_id,
+    MIN(appointment_id) AS appointment_id,
+    MIN(created_at) AS created_at
+FROM appointment_status_history
+WHERE appointment_id = 184
+GROUP BY status_id;
+
+◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘
+WITH cte AS (
+    SELECT 
+        history_id,
+        appointment_id,
+        status_id,
+        note,
+        created_at,
+        ROW_NUMBER() OVER (
+            PARTITION BY 
+                appointment_id,
+                CASE 
+                    WHEN status_id = 4 AND note IN (N'Đã khám xong', N'Đã kê đơn thuốc') THEN note
+                    ELSE CAST(status_id AS NVARCHAR(10))
+                END
+            ORDER BY created_at DESC
+        ) AS rn
+    FROM appointment_status_history
+    WHERE appointment_id = 184
+)
+SELECT *
+FROM cte
+WHERE rn = 1
+ORDER BY status_id, created_at;
+◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘
+CREATE PROCEDURE GetStatisticalAppointment @appointmentId INT
+AS
+BEGIN
+	WITH cte AS (
+    SELECT 
+        history_id,
+        appointment_id,
+        status_id,
+        note,
+        created_at,
+        ROW_NUMBER() OVER (
+            PARTITION BY appointment_id,
+                         CASE 
+                             WHEN status_id = 4 THEN 4
+                             ELSE status_id
+                         END
+            ORDER BY 
+                CASE 
+                    WHEN note = N'Đã khám xong' THEN 1
+                    ELSE 2
+                END, 
+                created_at DESC
+			) AS rn
+		FROM appointment_status_history
+		WHERE appointment_id = @appointmentId
+		)
+	SELECT *
+	FROM cte
+	WHERE rn = 1
+	ORDER BY status_id, created_at;
+END
+
+
+
+◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘◘
+
+ALTER PROCEDURE GetStatisticalAppointment @appointmentId INT
+AS
+BEGIN
+	WITH cte AS (
+    SELECT 
+        h.history_id,
+        h.appointment_id,
+        h.status_id,
+		s.status_name,
+        h.note,
+        h.created_at,
+        ROW_NUMBER() OVER (
+            PARTITION BY appointment_id,
+                         CASE 
+                             WHEN h.status_id = 4 THEN 4
+                             ELSE h.status_id
+                         END
+            ORDER BY 
+                CASE 
+                    WHEN h.note = N'Đã khám xong' THEN 1
+                    ELSE 2
+                END, 
+                h.created_at DESC
+			) AS rn
+		FROM appointment_status_history h
+		INNER JOIN status s ON h.status_id = s.status_id 
+		WHERE appointment_id = @appointmentId
+		)
+	SELECT *
+	FROM cte
+	WHERE rn = 1
+	ORDER BY status_id, created_at;
+END
+
+EXEC GetStatisticalAppointment 184
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

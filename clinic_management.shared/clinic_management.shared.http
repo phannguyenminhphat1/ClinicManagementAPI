@@ -1,0 +1,6 @@
+@clinic_management.shared_HostAddress = http://localhost:5163
+
+GET {{clinic_management.shared_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
